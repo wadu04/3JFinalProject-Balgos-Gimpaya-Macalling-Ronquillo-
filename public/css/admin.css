@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+*{
+  font-family: "Poppins", sans-serif;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+header{
+    background: white;
+  
+  }
+
+  .section-title{
+    text-align: center;
+    padding: 60px 0 100px;
+    text-transform: uppercase;
+    font-size: 2rem;
+  }
+
+  .section-title::after{
+    content: "";
+    width: 80px;
+    height: 5px;
+    display: block;
+    margin: 10px auto;
+    border-radius: 8px;
+    background: yellow;
+  }
+  
+  .navbar .nav-logo .logo-text{
+    color: black;
+    font-size: x-large;
+    font-weight: bold;
+  }
+  .navbar .nav-menu .nav-link,
+  .navbar .nav-menu select {
+    display: inline-block;
+    padding: 10px 18px;
+    border-radius: 50px;
+    font-size: medium;
+    color: black;
+    text-align: center;
+    width: 120px;
+    transition: 0.3s ease;
+  }
+  
+  .navbar .nav-menu .nav-link:hover,
+  .navbar .nav-menu select:hover {
+    background-color: aquamarine;
+  }
+  .section-content{
+    margin: 0 auto;
+    padding: 0 20px;
+    max-width: 1270px;
+  }
+  
+  ul{
+    list-style-type: none;
+   
+  }
+  a{
+    text-decoration: none;
+  }
+  header .navbar{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px;
+  }
+  .navbar .nav-menu{
+    display: flex;
+    gap: 10px;
+  }
