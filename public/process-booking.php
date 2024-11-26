@@ -8,112 +8,93 @@ $response = array();
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     $response['status'] = 'error';
-    $response['message'] = 'Please log in to book tickets';
-    $response['redirect'] = 'login-form.php';
+    $response['message'] = 'Please log in to book an appointment';
+    $response['redirect'] = 'login.php';
     echo json_encode($response);
     exit();
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $database = new Database();
-    $db = $database->getConnection();
+    $conn = $database->getConnection();
 
     $user_id = $_SESSION['user_id'];
-    $bus_class_id = filter_input(INPUT_POST, 'busClass', FILTER_SANITIZE_NUMBER_INT);
-    $schedule = filter_input(INPUT_POST, 'schedule', FILTER_SANITIZE_STRING);
-    $selected_seats = filter_input(INPUT_POST, 'selectedSeats', FILTER_SANITIZE_STRING);
-    $payment_method = filter_input(INPUT_POST, 'payment', FILTER_SANITIZE_STRING);
-
-    // Convert selected seats string to array
-    $seat_numbers = explode(',', $selected_seats);
-    $number_of_seats = count($seat_numbers);
+    $service_id = filter_input(INPUT_POST, 'service_id', FILTER_SANITIZE_NUMBER_INT);
+    $therapist_id = filter_input(INPUT_POST, 'therapist_id', FILTER_SANITIZE_NUMBER_INT);
+    $selected_datetime = filter_input(INPUT_POST, 'selected_datetime', FILTER_SANITIZE_STRING);
+    $payment_method = filter_input(INPUT_POST, 'payment_method', FILTER_SANITIZE_STRING);
 
     try {
         // Start transaction
-        $db->beginTransaction();
+        $conn->beginTransaction();
 
-        // Get schedule ID and check seat availability
-        $schedule_query = "SELECT id, available_seats FROM schedules 
-                          WHERE bus_class_id = ? AND departure_time = ?";
-        $schedule_stmt = $db->prepare($schedule_query);
-        $schedule_stmt->execute([$bus_class_id, $schedule]);
-        $schedule_data = $schedule_stmt->fetch(PDO::FETCH_ASSOC);
+        // Get service duration
+        $stmt = $conn->prepare("SELECT duration, price FROM services WHERE id = ?");
+        $stmt->bind_param("i", $service_id);
+        $stmt->execute();
+        $service = $stmt->get_result()->fetch_assoc();
 
-        if (!$schedule_data || $schedule_data['available_seats'] < $number_of_seats) {
-            $response['status'] = 'error';
-            $response['message'] = 'Redirecting to home page...';
-            $response['redirect'] = 'index.php';
-            echo json_encode($response);
-            exit();
+        // Calculate end time
+        $start_time = new DateTime($selected_datetime);
+        $end_time = clone $start_time;
+        $end_time->add(new DateInterval('PT' . $service['duration'] . 'M'));
+
+        // Check therapist availability
+        $stmt = $conn->prepare("
+            SELECT COUNT(*) as count 
+            FROM appointments 
+            WHERE therapist_id = ? 
+            AND status != 'canceled'
+            AND (
+                (start_time <= ? AND end_time > ?) OR
+                (start_time < ? AND end_time >= ?) OR
+                (start_time >= ? AND end_time <= ?)
+            )
+        ");
+        $start_str = $start_time->format('Y-m-d H:i:s');
+        $end_str = $end_time->format('Y-m-d H:i:s');
+        $stmt->bind_param("issssss", $therapist_id, $end_str, $start_str, $end_str, $start_str, $start_str, $end_str);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+
+        if ($result['count'] > 0) {
+            throw new Exception("Selected time slot is not available");
         }
 
-        // Check if any of the selected seats are already booked
-        $check_seats_query = "SELECT bs.seat_number 
-                            FROM booked_seats bs
-                            JOIN bookings b ON bs.booking_id = b.id
-                            WHERE b.schedule_id = ? AND bs.seat_number IN (" . str_repeat('?,', count($seat_numbers) - 1) . "?)";
-        $check_seats_params = array_merge([$schedule_data['id']], $seat_numbers);
-        $check_seats_stmt = $db->prepare($check_seats_query);
-        $check_seats_stmt->execute($check_seats_params);
-        
-        if ($check_seats_stmt->rowCount() > 0) {
-            throw new Exception('Some selected seats are already booked');
-        }
+        // Create appointment
+        $stmt = $conn->prepare("
+            INSERT INTO appointments (user_id, therapist_id, service_id, start_time, end_time, status)
+            VALUES (?, ?, ?, ?, ?, 'confirmed')
+        ");
+        $stmt->bind_param("iiiss", $user_id, $therapist_id, $service_id, $start_str, $end_str);
+        $stmt->execute();
+        $appointment_id = $conn->insert_id;
 
-        // Calculate total amount
-        $price_query = "SELECT price FROM bus_classes WHERE id = ?";
-        $price_stmt = $db->prepare($price_query);
-        $price_stmt->execute([$bus_class_id]);
-        $price_data = $price_stmt->fetch(PDO::FETCH_ASSOC);
-        $total_amount = $price_data['price'] * $number_of_seats;
-
-        // Create booking
-        $booking_query = "INSERT INTO bookings (user_id, schedule_id, bus_class_id, 
-                         number_of_seats, total_amount, payment_method) 
-                         VALUES (?, ?, ?, ?, ?, ?)";
-        $booking_stmt = $db->prepare($booking_query);
-        $booking_stmt->execute([
-            $user_id,
-            $schedule_data['id'],
-            $bus_class_id,
-            $number_of_seats,
-            $total_amount,
-            $payment_method
-        ]);
-        $booking_id = $db->lastInsertId();
-
-        // Insert booked seats
-        $insert_seats_query = "INSERT INTO booked_seats (booking_id, seat_number) VALUES (?, ?)";
-        $insert_seats_stmt = $db->prepare($insert_seats_query);
-        foreach ($seat_numbers as $seat_number) {
-            $insert_seats_stmt->execute([$booking_id, $seat_number]);
-        }
-
-        // Update available seats
-        $update_seats = "UPDATE schedules 
-                        SET available_seats = available_seats - ? 
-                        WHERE id = ?";
-        $update_stmt = $db->prepare($update_seats);
-        $update_stmt->execute([$number_of_seats, $schedule_data['id']]);
+        // Create payment record
+        $stmt = $conn->prepare("
+            INSERT INTO payments (appointment_id, payment_method, payment_status, amount)
+            VALUES (?, ?, 'unpaid', ?)
+        ");
+        $stmt->bind_param("isd", $appointment_id, $payment_method, $service['price']);
+        $stmt->execute();
 
         // Commit transaction
-        $db->commit();
+        $conn->commit();
 
         $response['status'] = 'success';
-        $response['message'] = 'Booking successful!';
-        $response['booking_id'] = $booking_id;
+        $response['message'] = 'Appointment booked successfully';
+        $response['redirect'] = 'my-appointments.php';
 
     } catch (Exception $e) {
-        // Rollback transaction on error
-        $db->rollBack();
+        $conn->rollBack();
         $response['status'] = 'error';
-        $response['message'] = 'Redirecting to home page...';
-        $response['redirect'] = 'index.php';
+        $response['message'] = $e->getMessage();
     }
-} else {
-    $response['status'] = 'error';
-    $response['message'] = 'Invalid request method';
-    $response['redirect'] = 'index.php';
+
+    echo json_encode($response);
+    exit();
 }
 
+$response['status'] = 'error';
+$response['message'] = 'Invalid request method';
 echo json_encode($response);
