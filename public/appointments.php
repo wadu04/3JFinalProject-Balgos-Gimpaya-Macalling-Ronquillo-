@@ -7,36 +7,29 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-
 $database = new Database();
 $conn = $database->getConnection();
 
+// Get all appointments with related information and review status
+$query = "SELECT a.*, s.service_name, s.description as service_description, s.duration, s.price,
+          u.fullname as therapist_name,
+          p.payment_method, p.payment_status, p.transaction_id, p.payment_date,
+          (SELECT COUNT(*) FROM reviews r WHERE r.appointment_id = a.id) as has_review
+          FROM appointments a
+          JOIN services s ON a.service_id = s.id
+          JOIN users u ON a.therapist_id = u.id
+          LEFT JOIN payments p ON a.id = p.appointment_id
+          WHERE a.user_id = ?
+          ORDER BY a.start_time DESC";
 
-$stmt = $conn->prepare("
-    SELECT 
-        a.id,
-        a.start_time,
-        a.end_time,
-        a.status,
-        s.service_name,
-        s.description as service_description,
-        s.duration,
-        s.price,
-        u.fullname as therapist_name,
-        p.payment_method,
-        p.payment_status,
-        p.transaction_id,
-        p.payment_date
-    FROM appointments a
-    JOIN services s ON a.service_id = s.id
-    JOIN users u ON a.therapist_id = u.id
-    LEFT JOIN payments p ON a.id = p.appointment_id
-    WHERE a.user_id = ?
-    ORDER BY a.start_time DESC
-");
+$stmt = $conn->prepare($query);
 $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();
-$appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$result = $stmt->get_result();
+$appointments = [];
+while ($row = $result->fetch_assoc()) {
+    $appointments[] = $row;
+}
 
 // Get user details
 $stmt = $conn->prepare("SELECT fullname FROM users WHERE id = ?");
@@ -50,10 +43,34 @@ $user = $stmt->get_result()->fetch_assoc();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Appointments - Serenity Spa</title>
+    <title>My Appointments - Gooding Spa</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        .rating {
+            display: inline-block;
+            direction: rtl;
+        }
+        .rating input {
+            display: none;
+        }
+        .rating label {
+            cursor: pointer;
+            width: 25px;
+            font-size: 25px;
+            color: #ddd;
+            padding: 5px;
+        }
+        .rating label:before {
+            content: '★';
+        }
+        .rating input:checked ~ label {
+            color: #ffd700;
+        }
+        .rating label:hover,
+        .rating label:hover ~ label {
+            color: #ffd700;
+        }
         .appointment-card {
             transition: transform 0.2s;
             height: 100%;
@@ -133,7 +150,7 @@ $user = $stmt->get_result()->fetch_assoc();
                             </span>
                             
                             <!-- Payment Badge -->
-                            <?php if ($appointment['payment_status']): ?>
+                            <?php if (isset($appointment['payment_method']) && !empty($appointment['payment_method'])): ?>
                                 <span class="payment-badge badge bg-<?php 
                                     echo $appointment['payment_status'] === 'paid' ? 'success' : 'warning'; 
                                 ?>">
@@ -180,7 +197,7 @@ $user = $stmt->get_result()->fetch_assoc();
                                     <strong><?php echo htmlspecialchars($appointment['therapist_name']); ?></strong>
                                 </div>
 
-                                <?php if ($appointment['payment_method']): ?>
+                                <?php if (isset($appointment['payment_method']) && !empty($appointment['payment_method'])): ?>
                                     <div class="mb-3">
                                         <small class="text-muted d-block">Payment Details</small>
                                         <div class="row g-2">
@@ -193,7 +210,7 @@ $user = $stmt->get_result()->fetch_assoc();
                                                 </strong>
                                             </div>
                                         </div>
-                                        <?php if ($appointment['transaction_id']): ?>
+                                        <?php if (isset($appointment['transaction_id']) && !empty($appointment['transaction_id'])): ?>
                                             <small class="text-muted d-block mt-1">
                                                 Transaction ID: <?php echo htmlspecialchars($appointment['transaction_id']); ?>
                                             </small>
@@ -201,42 +218,27 @@ $user = $stmt->get_result()->fetch_assoc();
                                     </div>
                                 <?php endif; ?>
 
-                                <?php if ($appointment['status'] === 'pending' || ($appointment['status'] === 'confirmed' && $appointment['payment_status'] === 'unpaid')): ?>
-                                    <div class="d-grid gap-2">
-                                        <?php if ($appointment['payment_status'] === 'unpaid'): ?>
-                                            <a href="payment.php?appointment_id=<?php echo $appointment['id']; ?>" 
-                                               class="btn btn-primary">
-                                                <i class="fas fa-credit-card me-2"></i>Pay Now
-                                            </a>
-                                        <?php endif; ?>
-                                        
-                                        <button type="button" 
-                                                class="btn btn-outline-danger"
-                                                data-bs-toggle="modal" 
-                                                data-bs-target="#cancelModal<?php echo $appointment['id']; ?>">
-                                            <i class="fas fa-times-circle me-2"></i>Cancel Appointment
-                                        </button>
-                                    </div>
-
-                                    <!-- Cancel Modal -->
-                                    <div class="modal fade" id="cancelModal<?php echo $appointment['id']; ?>" tabindex="-1">
-                                        <div class="modal-dialog">
-                                            <div class="modal-content">
-                                                <div class="modal-header">
-                                                    <h5 class="modal-title">Cancel Appointment</h5>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                                </div>
-                                                <div class="modal-body">
-                                                    <p>Are you sure you want to cancel this appointment?</p>
-                                                    <p class="text-muted small">This action cannot be undone.</p>
-                                                </div>
-                                                <div class="modal-footer">
-                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">No, Keep It</button>
-                                                    <a href="cancel-appointment.php?id=<?php echo $appointment['id']; ?>" 
-                                                       class="btn btn-danger">Yes, Cancel It</a>
-                                                </div>
-                                            </div>
+                                <?php if ($appointment['status'] === 'completed'): ?>
+                                    <?php if (!$appointment['has_review']): ?>
+                                        <div class="d-grid gap-2">
+                                            <button type="button" class="btn btn-primary btn-sm"
+                                                    onclick="openReviewModal(<?php echo $appointment['id']; ?>, 
+                                                            '<?php echo htmlspecialchars($appointment['therapist_name']); ?>')">
+                                                <i class="fas fa-star"></i> Review
+                                            </button>
                                         </div>
+                                    <?php else: ?>
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check"></i> Reviewed
+                                        </span>
+                                    <?php endif; ?>
+                                <?php elseif ($appointment['status'] === 'pending'): ?>
+                                    <div class="d-grid gap-2">
+                                        <button type="button" class="btn btn-danger btn-sm"
+                                                onclick="if(confirm('Are you sure you want to cancel this appointment?'))
+                                                        window.location.href='cancel-appointment.php?id=<?php echo $appointment['id']; ?>'">
+                                            <i class="fas fa-times"></i> Cancel
+                                        </button>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -247,6 +249,89 @@ $user = $stmt->get_result()->fetch_assoc();
         <?php endif; ?>
     </div>
 
+    <!-- Review Modal -->
+    <div class="modal fade" id="reviewModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Review Your Experience</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="reviewForm">
+                    <div class="modal-body">
+                        <input type="hidden" name="appointment_id" id="appointment_id">
+                        
+                        <p>How was your experience with <strong><span id="therapist_name"></span></strong>?</p>
+                        
+                        <div class="mb-3 text-center">
+                            <div class="rating">
+                                <input type="radio" name="rating" value="5" id="star5" required>
+                                <label for="star5" title="5 stars"></label>
+                                <input type="radio" name="rating" value="4" id="star4">
+                                <label for="star4" title="4 stars"></label>
+                                <input type="radio" name="rating" value="3" id="star3">
+                                <label for="star3" title="3 stars"></label>
+                                <input type="radio" name="rating" value="2" id="star2">
+                                <label for="star2" title="2 stars"></label>
+                                <input type="radio" name="rating" value="1" id="star1">
+                                <label for="star1" title="1 star"></label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="comment" class="form-label">Share your experience (optional)</label>
+                            <textarea class="form-control" id="comment" name="comment" rows="3" 
+                                    placeholder="Tell us about your experience..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="submitReview()">Submit Review</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const reviewModal = new bootstrap.Modal(document.getElementById('reviewModal'));
+        
+        function openReviewModal(appointmentId, therapistName) {
+            document.getElementById('appointment_id').value = appointmentId;
+            document.getElementById('therapist_name').textContent = therapistName;
+            reviewModal.show();
+        }
+
+        function submitReview() {
+            const form = document.getElementById('reviewForm');
+            const formData = new FormData(form);
+
+            // Validate rating
+            const rating = formData.get('rating');
+            if (!rating) {
+                alert('Please select a rating');
+                return;
+            }
+
+            fetch('submit-review.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    reviewModal.hide();
+                    window.location.href = 'appointments.php?success=' + encodeURIComponent('Thank you for your review!');
+                } else {
+                    alert(data.error || 'Failed to submit review');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to submit review. Please try again.');
+            });
+        }
+    </script>
 </body>
 </html>

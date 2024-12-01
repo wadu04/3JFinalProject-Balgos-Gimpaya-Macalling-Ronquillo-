@@ -47,7 +47,7 @@ CREATE TABLE appointments (
     service_id INT NOT NULL,
     start_time DATETIME NOT NULL,
     end_time DATETIME NOT NULL,
-    status ENUM('confirmed', 'completed', 'canceled') DEFAULT 'pending',
+    status ENUM('pending', 'confirmed', 'completed', 'canceled') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -56,15 +56,34 @@ CREATE TABLE appointments (
 );
 
 
+CREATE TABLE reviews (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    appointment_id INT NOT NULL,
+    user_id INT NOT NULL,
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+
 CREATE TABLE payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     appointment_id INT NOT NULL,
-    payment_method ENUM('cash', 'credit_card', 'paypal') NOT NULL,
-    payment_status ENUM('paid', 'unpaid', 'refunded') DEFAULT 'unpaid',
+    payment_method ENUM('cash', 'credit_card', 'paypal', 'gcash') NOT NULL,
+    payment_status ENUM('pending', 'confirmed', 'cancelled', 'refunded') DEFAULT 'pending',
     amount DECIMAL(10,2) NOT NULL,
     transaction_id VARCHAR(100),
     payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
+    confirmation_date TIMESTAMP NULL,
+    confirmed_by INT NULL,
+    proof_of_payment VARCHAR(255) NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+    FOREIGN KEY (confirmed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 

@@ -41,7 +41,7 @@ $services = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         <h1 class="text-center mb-5">Our Spa Services</h1>
         
         <div class="row g-4">
-            <!-- Swedish Massage -->
+            
             <div class="col-md-6 col-lg-3">
                 <div class="card service-card shadow">
                     <img src="assets/images/swedish.jpg" class="card-img-top" alt="Swedish Massage">
@@ -92,7 +92,7 @@ $services = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             <!-- Hot Stone Massage -->
             <div class="col-md-6 col-lg-3">
                 <div class="card service-card shadow">
-                    <img src="assets/images/hot-stone.jpg" class="card-img-top" alt="Hot Stone Massage">
+                    <img src="assets/images/hotstone.jpg" class="card-img-top" alt="Hot Stone Massage">
                     <div class="card-body">
                         <h5 class="card-title">Hot Stone Massage</h5>
                         <p class="card-text">Heated stones are used alongside massage strokes for deeper relaxation</p>

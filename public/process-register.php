@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = "Valid email is required";
     if (empty($phone)) $errors[] = "Phone number is required";
     if (empty($password)) $errors[] = "Password is required";
-    if (!in_array($role, ['admin', 'user'])) $errors[] = "Invalid role selected";
+    if (!in_array($role, ['admin', 'customer', 'therapist'])) $errors[] = "Invalid role selected";
 
     if (empty($errors)) {
         try {

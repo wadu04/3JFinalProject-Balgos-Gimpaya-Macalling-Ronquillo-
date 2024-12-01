@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) $errors[] = "Valid email is required";
     if (empty($phone)) $errors[] = "Phone number is required";
     if (empty($password)) $errors[] = "Password is required";
-    if (!in_array($role, ['customer', 'therapist'])) $errors[] = "Invalid role selected";
+    if (!in_array($role, ['customer', 'therapist', 'admin'])) $errors[] = "Invalid role selected";
 
     // Check if email already exists
     $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
@@ -104,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="mb-3">
                                 <label for="role" class="form-label">Register as</label>
                                 <select class="form-select" id="role" name="role" required>
+                                    <option value="admin">Admin</option>
                                     <option value="customer">Customer</option>
                                     <option value="therapist">Therapist</option>
                                 </select>
